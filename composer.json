@@ -1,0 +1,15 @@
+{
+    "name": "sjs/solderphp",
+    "description": "A small regex-based URL-to-class router, derived from GluePHP.",
+    "type": "library",
+    "license": "BSD-3-Clause",
+    "require": {
+        "php": "^8.2"
+    },
+    "autoload": {
+        "classmap": ["solder.php"]
+    },
+    "scripts": {
+        "test": "php tests/run.php"
+    }
+}
