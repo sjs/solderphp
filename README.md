@@ -63,9 +63,19 @@ methods you intend to expose to HTTP requests.
 Patterns are regular expressions, matched case-insensitively against the entire
 path with an optional trailing slash. Escape regex metacharacters for literal
 text (for example `/file\.json`). Query strings are excluded; encoded path
-characters are preserved. As in GluePHP, routes are sorted by key in reverse
-order before matching, and the first matching route wins. Alternation is grouped
-so that `/one|/two` matches only those complete paths.
+characters are preserved. Routes are tried in declaration order, and the first
+matching route wins. Put specific routes before broad fallback patterns:
+
+```php
+solder::dispatch([
+    '/page/special' => SpecialPage::class,
+    '/page/.*' => Page::class,
+]);
+```
+
+Here `/page/special` selects `SpecialPage`; other paths matching `/page/.*`
+select `Page`. Alternation is grouped so that `/one|/two` matches only those
+complete paths.
 
 For CLI use or tests, supply a method and URI explicitly:
 

@@ -33,8 +33,8 @@ class solder
 
     /**
      * Routes are case-insensitive regular expressions matched against the whole
-     * path with an optional trailing slash. Reverse key sorting preserves the
-     * original route precedence. Handlers receive a single regex matches array.
+     * path with an optional trailing slash. Routes are tried in declaration order;
+     * the first match wins. Handlers receive a single regex matches array.
      *
      * @param array<string, class-string> $urls
      * @throws InvalidArgumentException For invalid requests or route patterns.
@@ -60,7 +60,6 @@ class solder
             throw new InvalidArgumentException('The request URI must start with /.');
         }
 
-        krsort($urls);
         foreach ($urls as $route => $class) {
             if (!is_string($route) || !is_string($class) || $class === '') {
                 throw new InvalidArgumentException('Routes must map string patterns to class names.');
