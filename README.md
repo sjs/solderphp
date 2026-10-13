@@ -31,7 +31,7 @@ class Page
     }
 }
 
-solder::stick([
+solder::dispatch([
     '/' => Home::class,
     '/page/(\d+)' => Page::class,
 ]);
@@ -53,7 +53,7 @@ so that `/one|/two` matches only those complete paths.
 For CLI use or tests, supply a method and URI explicitly:
 
 ```php
-solder::stick(['/page/(\d+)' => Page::class], 'GET', '/page/42?preview=1');
+solder::dispatch(['/page/(\d+)' => Page::class], 'GET', '/page/42?preview=1');
 ```
 
 Missing routes or classes throw `RuntimeException`; unsupported or non-public

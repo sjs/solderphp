@@ -18,7 +18,7 @@ class solder
      * @throws RuntimeException When no route or handler class exists.
      * @throws BadMethodCallException When no public HTTP method handler exists.
      */
-    public static function stick(array $urls, ?string $method = null, ?string $uri = null): void
+    public static function dispatch(array $urls, ?string $method = null, ?string $uri = null): void
     {
         $method = $method ?? ($_SERVER['REQUEST_METHOD'] ?? null);
         $uri = $uri ?? ($_SERVER['REQUEST_URI'] ?? null);
