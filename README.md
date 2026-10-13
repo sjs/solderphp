@@ -39,7 +39,9 @@ solder::dispatch([
 
 Configure your web server to forward requests to your PHP entry point.
 Handlers must have a no-argument constructor and public methods named for the
-HTTP verbs they accept (`GET`, `POST`, etc.). Each method receives the regex
+HTTP verbs they accept. The router allows only `GET`, `HEAD`, `POST`, `PUT`,
+`DELETE`, `CONNECT`, `OPTIONS`, `TRACE`, and `PATCH`; other methods are rejected
+before constructing a handler. Each method receives the regex
 matches array, with the full matched path at index `0` and captures at `1` onward.
 Handler return values are ignored; handlers manage their own response.
 

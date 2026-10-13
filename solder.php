@@ -16,7 +16,7 @@ class solder
      * @param array<string, class-string> $urls
      * @throws InvalidArgumentException For invalid requests or route patterns.
      * @throws RuntimeException When no route or handler class exists.
-     * @throws BadMethodCallException When no public HTTP method handler exists.
+     * @throws BadMethodCallException For unsupported verbs or missing public handlers.
      */
     public static function dispatch(array $urls, ?string $method = null, ?string $uri = null): void
     {
@@ -27,6 +27,10 @@ class solder
         }
 
         $method = strtoupper($method);
+        if (!in_array($method, ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH'], true)) {
+            throw new BadMethodCallException("Method, $method, not supported.");
+        }
+
         // Preserve encoded characters and leading double slashes in the path.
         $path = explode('?', $uri, 2)[0];
         if ($path === '' || $path[0] !== '/') {

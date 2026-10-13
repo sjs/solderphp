@@ -25,6 +25,25 @@ class SpecificHandler extends TestHandler
     public function GET(array $matches): void { self::$calls[] = ['specific', $matches]; }
 }
 
+class SecurityHandler
+{
+    public static int $constructions = 0;
+    public static int $helperCalls = 0;
+    public function __construct() { ++self::$constructions; }
+    public function clearCache(array $matches): void { ++self::$helperCalls; }
+}
+
+class HttpVerbHandler extends TestHandler
+{
+    public function HEAD(array $matches): void { self::$calls[] = ['HEAD', $matches]; }
+    public function PUT(array $matches): void { self::$calls[] = ['PUT', $matches]; }
+    public function DELETE(array $matches): void { self::$calls[] = ['DELETE', $matches]; }
+    public function CONNECT(array $matches): void { self::$calls[] = ['CONNECT', $matches]; }
+    public function OPTIONS(array $matches): void { self::$calls[] = ['OPTIONS', $matches]; }
+    public function TRACE(array $matches): void { self::$calls[] = ['TRACE', $matches]; }
+    public function PATCH(array $matches): void { self::$calls[] = ['PATCH', $matches]; }
+}
+
 $passed = 0;
 function check(bool $condition, string $label): void
 {
@@ -69,6 +88,18 @@ check(dispatch(['//host/path' => TestHandler::class], 'GET', '//host/path')[1][0
 foreach (['PUT', 'DELETE', 'PATCH', '__missing'] as $method) {
     rejects(BadMethodCallException::class, fn() => solder::dispatch($routes, $method, '/'), "unsupported $method");
 }
+foreach (['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH'] as $method) {
+    check(dispatch(['/' => HttpVerbHandler::class], strtolower($method), '/')[0] === $method, "allowed $method");
+}
+foreach (['CLEARCACHE', 'clearCache', '__CONSTRUCT', '__DESTRUCT', 'GET ', 'GET\n', 'PROPFIND'] as $method) {
+    rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], $method, '/'), "blocked $method");
+}
+check(SecurityHandler::$constructions === 0, 'blocked verbs do not construct handlers');
+check(SecurityHandler::$helperCalls === 0, 'blocked verbs do not invoke public helpers');
+$_SERVER['REQUEST_METHOD'] = 'CLEARCACHE';
+$_SERVER['REQUEST_URI'] = '/';
+rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class]), 'blocked server method');
+check(SecurityHandler::$constructions === 0, 'blocked server method does not construct handler');
 rejects(RuntimeException::class, fn() => solder::dispatch($routes, 'GET', '/missing'), 'missing route');
 rejects(RuntimeException::class, fn() => solder::dispatch(['/' => 'NonexistentHandler'], 'GET', '/'), 'missing class');
 rejects(InvalidArgumentException::class, fn() => solder::dispatch(['/[broken' => TestHandler::class], 'GET', '/'), 'invalid regex');
