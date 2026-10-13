@@ -8,6 +8,29 @@ declare(strict_types=1);
  */
 class solder
 {
+    /** @var list<string> */
+    private static array $allowedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+
+    /**
+     * Allow additional HTTP methods for subsequent dispatches.
+     * Names must also be safe PHP handler method names; magic methods are excluded.
+     *
+     * @throws InvalidArgumentException For invalid method names.
+     */
+    public static function addMethods(string ...$methods): void
+    {
+        $normalized = [];
+        foreach ($methods as $method) {
+            if (preg_match('/\A[A-Za-z][A-Za-z0-9_]*\z/', $method) !== 1) {
+                throw new InvalidArgumentException('HTTP methods must start with an ASCII letter and contain only letters, digits, or underscores.');
+            }
+            $normalized[] = strtoupper($method);
+        }
+
+        // Validate every name before changing the allowlist.
+        self::$allowedMethods = array_values(array_unique([...self::$allowedMethods, ...$normalized]));
+    }
+
     /**
      * Routes are case-insensitive regular expressions matched against the whole
      * path with an optional trailing slash. Reverse key sorting preserves the
@@ -27,7 +50,7 @@ class solder
         }
 
         $method = strtoupper($method);
-        if (!in_array($method, ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH'], true)) {
+        if (!in_array($method, self::$allowedMethods, true)) {
             throw new BadMethodCallException("Method, $method, not supported.");
         }
 

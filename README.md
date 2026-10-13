@@ -39,11 +39,26 @@ solder::dispatch([
 
 Configure your web server to forward requests to your PHP entry point.
 Handlers must have a no-argument constructor and public methods named for the
-HTTP verbs they accept. The router allows only `GET`, `HEAD`, `POST`, `PUT`,
-`DELETE`, `CONNECT`, `OPTIONS`, `TRACE`, and `PATCH`; other methods are rejected
+HTTP verbs they accept. By default, the router allows `GET`, `HEAD`, `POST`, `PUT`,
+`PATCH`, `DELETE`, and `OPTIONS`; other methods are rejected
 before constructing a handler. Each method receives the regex
 matches array, with the full matched path at index `0` and captures at `1` onward.
 Handler return values are ignored; handlers manage their own response.
+
+To allow additional methods, register them before dispatching:
+
+```php
+solder::addMethods('PROPFIND', 'MKCOL');
+solder::dispatch($routes);
+```
+
+Registration adds to the defaults and applies to subsequent dispatches in the
+current PHP process. Names are normalized to uppercase and duplicates are ignored.
+Names must start with an ASCII letter and contain only letters, digits, or
+underscores so they can map to PHP methods; magic method names are rejected.
+If any name is invalid, none of the names in that call are added.
+Each registered method still requires a public handler method. Register only
+methods you intend to expose to HTTP requests.
 
 Patterns are regular expressions, matched case-insensitively against the entire
 path with an optional trailing slash. Escape regex metacharacters for literal

@@ -31,6 +31,8 @@ class SecurityHandler
     public static int $helperCalls = 0;
     public function __construct() { ++self::$constructions; }
     public function clearCache(array $matches): void { ++self::$helperCalls; }
+    public function CONNECT(array $matches): void { ++self::$helperCalls; }
+    public function TRACE(array $matches): void { ++self::$helperCalls; }
 }
 
 class HttpVerbHandler extends TestHandler
@@ -38,10 +40,15 @@ class HttpVerbHandler extends TestHandler
     public function HEAD(array $matches): void { self::$calls[] = ['HEAD', $matches]; }
     public function PUT(array $matches): void { self::$calls[] = ['PUT', $matches]; }
     public function DELETE(array $matches): void { self::$calls[] = ['DELETE', $matches]; }
-    public function CONNECT(array $matches): void { self::$calls[] = ['CONNECT', $matches]; }
     public function OPTIONS(array $matches): void { self::$calls[] = ['OPTIONS', $matches]; }
-    public function TRACE(array $matches): void { self::$calls[] = ['TRACE', $matches]; }
     public function PATCH(array $matches): void { self::$calls[] = ['PATCH', $matches]; }
+}
+
+class ExtendedHandler extends TestHandler
+{
+    public function PROPFIND(array $matches): void { self::$calls[] = ['PROPFIND', $matches]; }
+    public function MKCOL(array $matches): void { self::$calls[] = ['MKCOL', $matches]; }
+    protected function LOCK(array $matches): void {}
 }
 
 $passed = 0;
@@ -88,10 +95,10 @@ check(dispatch(['//host/path' => TestHandler::class], 'GET', '//host/path')[1][0
 foreach (['PUT', 'DELETE', 'PATCH', '__missing'] as $method) {
     rejects(BadMethodCallException::class, fn() => solder::dispatch($routes, $method, '/'), "unsupported $method");
 }
-foreach (['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH'] as $method) {
+foreach (['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as $method) {
     check(dispatch(['/' => HttpVerbHandler::class], strtolower($method), '/')[0] === $method, "allowed $method");
 }
-foreach (['CLEARCACHE', 'clearCache', '__CONSTRUCT', '__DESTRUCT', 'GET ', 'GET\n', 'PROPFIND'] as $method) {
+foreach (['CONNECT', 'TRACE', 'CLEARCACHE', 'clearCache', '__CONSTRUCT', '__DESTRUCT', 'GET ', 'GET\n', 'PROPFIND'] as $method) {
     rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], $method, '/'), "blocked $method");
 }
 check(SecurityHandler::$constructions === 0, 'blocked verbs do not construct handlers');
@@ -114,4 +121,19 @@ $_SERVER['REQUEST_URI'] = '/page/99?x=1';
 TestHandler::$calls = [];
 solder::dispatch($routes);
 check(TestHandler::$calls === [['GET', ['/page/99', '99']]], 'server request');
+
+foreach (['', '__construct', '__DESTRUCT', '_helper', '9METHOD', 'GET ', "GET\n", 'X-METHOD', 'méthode'] as $method) {
+    rejects(InvalidArgumentException::class, fn() => solder::addMethods($method), "invalid registration $method");
+}
+rejects(InvalidArgumentException::class, fn() => solder::addMethods('MKCOL', '__construct'), 'registration validates entire batch');
+rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => ExtendedHandler::class], 'MKCOL', '/'), 'invalid batch adds no methods');
+solder::addMethods('propfind', 'MKCOL', 'LOCK', 'PROPFIND', 'GET');
+solder::addMethods();
+check(dispatch(['/' => ExtendedHandler::class], 'propfind', '/')[0] === 'PROPFIND', 'registered lowercase method');
+check(dispatch(['/' => ExtendedHandler::class], 'MKCOL', '/')[0] === 'MKCOL', 'multiple registered methods');
+check(dispatch($routes, 'GET', '/')[0] === 'GET', 'default methods retained');
+rejects(BadMethodCallException::class, fn() => solder::dispatch($routes, 'PROPFIND', '/'), 'registered method needs handler');
+rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => ExtendedHandler::class], 'LOCK', '/'), 'registered method needs public handler');
+rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], '__CONSTRUCT', '/'), 'magic methods remain blocked');
+rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], 'CLEARCACHE', '/'), 'unregistered helpers remain blocked');
 echo "Passed $passed checks.\n";
