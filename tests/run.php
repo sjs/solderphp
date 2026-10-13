@@ -51,6 +51,33 @@ class ExtendedHandler extends TestHandler
     protected function LOCK(array $matches): void {}
 }
 
+abstract class AbstractHandler extends TestHandler {}
+class PrivateConstructorHandler extends TestHandler
+{
+    private function __construct() {}
+}
+class RequiredConstructorHandler extends TestHandler
+{
+    public function __construct(string $argument) {}
+}
+class OptionalConstructorHandler extends TestHandler
+{
+    public function __construct(string $argument = '') {}
+}
+class SideEffectHandler extends TestHandler
+{
+    public static int $constructions = 0;
+    public function __construct() { ++self::$constructions; }
+}
+class ThrowingConstructorHandler extends TestHandler
+{
+    public function __construct() { throw new LogicException('constructor failure'); }
+}
+class ThrowingMethodHandler extends TestHandler
+{
+    public function GET(array $matches): void { throw new LogicException('handler failure'); }
+}
+
 $passed = 0;
 function check(bool $condition, string $label): void
 {
@@ -83,8 +110,8 @@ check(dispatch($routes, 'GET', '/')[1] === ['/'], 'root');
 check(dispatch($routes, 'get', '/PAGE/42/?preview=1') === ['GET', ['/PAGE/42/', '42']], 'captures, case, slash, query');
 check(dispatch($routes, 'POST', '/page/7')[0] === 'POST', 'POST');
 check(dispatch(['/one|/two' => TestHandler::class], 'GET', '/two')[1][0] === '/two', 'alternation');
-rejects(RuntimeException::class, fn() => solder::dispatch(['/one|/two' => TestHandler::class], 'GET', '/one/extra'), 'anchored alternation');
-rejects(RuntimeException::class, fn() => solder::dispatch($routes, 'GET', "/page/7\n"), 'strict end anchor');
+rejects(RouteNotFoundException::class, fn() => solder::dispatch(['/one|/two' => TestHandler::class], 'GET', '/one/extra'), 'anchored alternation');
+rejects(RouteNotFoundException::class, fn() => solder::dispatch($routes, 'GET', "/page/7\n"), 'strict end anchor');
 check(dispatch(['/page/.*' => TestHandler::class, '/page/special' => SpecificHandler::class], 'GET', '/page/special')[0] === 'GET', 'first declared matching route wins');
 check(dispatch(['/page/special' => SpecificHandler::class, '/page/.*' => TestHandler::class], 'GET', '/page/special')[0] === 'specific', 'reversing declarations changes precedence');
 check(dispatch(['/page/special' => SpecificHandler::class, '/page/.*' => TestHandler::class], 'GET', '/page/other')[0] === 'GET', 'nonmatching first route falls through');
@@ -95,22 +122,22 @@ check(dispatch(['/a~b#c' => TestHandler::class], 'GET', '/a~b#c')[1][0] === '/a~
 check(dispatch(['/encoded/(.+)' => TestHandler::class], 'GET', '/encoded/a%2Fb')[1][1] === 'a%2Fb', 'encoded path retained');
 check(dispatch(['//host/path' => TestHandler::class], 'GET', '//host/path')[1][0] === '//host/path', 'leading double slash retained');
 foreach (['PUT', 'DELETE', 'PATCH', '__missing'] as $method) {
-    rejects(BadMethodCallException::class, fn() => solder::dispatch($routes, $method, '/'), "unsupported $method");
+    rejects(MethodNotAllowedException::class, fn() => solder::dispatch($routes, $method, '/'), "unsupported $method");
 }
 foreach (['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as $method) {
     check(dispatch(['/' => HttpVerbHandler::class], strtolower($method), '/')[0] === $method, "allowed $method");
 }
 foreach (['CONNECT', 'TRACE', 'CLEARCACHE', 'clearCache', '__CONSTRUCT', '__DESTRUCT', 'GET ', 'GET\n', 'PROPFIND'] as $method) {
-    rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], $method, '/'), "blocked $method");
+    rejects(MethodNotAllowedException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], $method, '/'), "blocked $method");
 }
 check(SecurityHandler::$constructions === 0, 'blocked verbs do not construct handlers');
 check(SecurityHandler::$helperCalls === 0, 'blocked verbs do not invoke public helpers');
 $_SERVER['REQUEST_METHOD'] = 'CLEARCACHE';
 $_SERVER['REQUEST_URI'] = '/';
-rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class]), 'blocked server method');
+rejects(MethodNotAllowedException::class, fn() => solder::dispatch(['/' => SecurityHandler::class]), 'blocked server method');
 check(SecurityHandler::$constructions === 0, 'blocked server method does not construct handler');
-rejects(RuntimeException::class, fn() => solder::dispatch($routes, 'GET', '/missing'), 'missing route');
-rejects(RuntimeException::class, fn() => solder::dispatch(['/' => 'NonexistentHandler'], 'GET', '/'), 'missing class');
+rejects(RouteNotFoundException::class, fn() => solder::dispatch($routes, 'GET', '/missing'), 'missing route');
+rejects(HandlerConfigurationException::class, fn() => solder::dispatch(['/' => 'NonexistentHandler'], 'GET', '/'), 'missing class');
 rejects(InvalidArgumentException::class, fn() => solder::dispatch(['/[broken' => TestHandler::class], 'GET', '/'), 'invalid regex');
 rejects(InvalidArgumentException::class, fn() => solder::dispatch([TestHandler::class], 'GET', '/'), 'invalid key');
 rejects(InvalidArgumentException::class, fn() => solder::dispatch(['/' => []], 'GET', '/'), 'invalid class value');
@@ -128,14 +155,41 @@ foreach (['', '__construct', '__DESTRUCT', '_helper', '9METHOD', 'GET ', "GET\n"
     rejects(InvalidArgumentException::class, fn() => solder::addMethods($method), "invalid registration $method");
 }
 rejects(InvalidArgumentException::class, fn() => solder::addMethods('MKCOL', '__construct'), 'registration validates entire batch');
-rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => ExtendedHandler::class], 'MKCOL', '/'), 'invalid batch adds no methods');
+rejects(MethodNotAllowedException::class, fn() => solder::dispatch(['/' => ExtendedHandler::class], 'MKCOL', '/'), 'invalid batch adds no methods');
 solder::addMethods('propfind', 'MKCOL', 'LOCK', 'PROPFIND', 'GET');
 solder::addMethods();
 check(dispatch(['/' => ExtendedHandler::class], 'propfind', '/')[0] === 'PROPFIND', 'registered lowercase method');
 check(dispatch(['/' => ExtendedHandler::class], 'MKCOL', '/')[0] === 'MKCOL', 'multiple registered methods');
 check(dispatch($routes, 'GET', '/')[0] === 'GET', 'default methods retained');
-rejects(BadMethodCallException::class, fn() => solder::dispatch($routes, 'PROPFIND', '/'), 'registered method needs handler');
-rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => ExtendedHandler::class], 'LOCK', '/'), 'registered method needs public handler');
-rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], '__CONSTRUCT', '/'), 'magic methods remain blocked');
-rejects(BadMethodCallException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], 'CLEARCACHE', '/'), 'unregistered helpers remain blocked');
+rejects(MethodNotAllowedException::class, fn() => solder::dispatch($routes, 'PROPFIND', '/'), 'registered method needs handler');
+rejects(MethodNotAllowedException::class, fn() => solder::dispatch(['/' => ExtendedHandler::class], 'LOCK', '/'), 'registered method needs public handler');
+rejects(MethodNotAllowedException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], '__CONSTRUCT', '/'), 'magic methods remain blocked');
+rejects(MethodNotAllowedException::class, fn() => solder::dispatch(['/' => SecurityHandler::class], 'CLEARCACHE', '/'), 'unregistered helpers remain blocked');
+function allowedMethods(array $routes, string $method, array $expected, string $label): void
+{
+    try {
+        solder::dispatch($routes, $method, '/');
+    } catch (MethodNotAllowedException $error) {
+        check($error->getAllowedMethods() === $expected, $label);
+        check($error instanceof BadMethodCallException, 'method exception preserves base class');
+        return;
+    }
+    throw new RuntimeException("FAIL: $label did not throw");
+}
+
+rejects(RouteNotFoundException::class, fn() => solder::dispatch($routes, 'TRACE', '/missing'), 'path matching precedes verb rejection');
+foreach ([AbstractHandler::class, PrivateConstructorHandler::class, RequiredConstructorHandler::class] as $class) {
+    rejects(HandlerConfigurationException::class, fn() => solder::dispatch(['/' => $class], 'GET', '/'), "unusable handler $class");
+}
+check(is_subclass_of(RouteNotFoundException::class, RuntimeException::class), 'route exception preserves base class');
+check(is_subclass_of(HandlerConfigurationException::class, RuntimeException::class), 'configuration exception preserves base class');
+check(dispatch(['/' => OptionalConstructorHandler::class], 'GET', '/')[0] === 'GET', 'optional constructor arguments accepted');
+rejects(LogicException::class, fn() => solder::dispatch(['/' => ThrowingConstructorHandler::class], 'GET', '/'), 'constructor exceptions propagate');
+rejects(LogicException::class, fn() => solder::dispatch(['/' => ThrowingMethodHandler::class], 'GET', '/'), 'handler exceptions propagate');
+allowedMethods(['/' => SideEffectHandler::class], 'DELETE', ['GET', 'POST'], 'protected and private verbs excluded');
+check(SideEffectHandler::$constructions === 0, 'unsupported handler method does not construct handler');
+allowedMethods(['/' => SecurityHandler::class], 'TRACE', [], 'unregistered verbs and public helpers excluded');
+allowedMethods(['/' => ExtendedHandler::class], 'LOCK', ['GET', 'POST', 'PROPFIND', 'MKCOL'], 'registered public verbs included once');
+allowedMethods(['/' => HttpVerbHandler::class], 'TRACE', ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], 'explicit HEAD and OPTIONS included');
+allowedMethods(['/' => TestHandler::class, '/.*' => HttpVerbHandler::class], 'DELETE', ['GET', 'POST'], 'method rejection does not fall through to another matching route');
 echo "Passed $passed checks.\n";

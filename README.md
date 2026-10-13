@@ -83,11 +83,42 @@ For CLI use or tests, supply a method and URI explicitly:
 solder::dispatch(['/page/(\d+)' => Page::class], 'GET', '/page/42?preview=1');
 ```
 
-Missing routes or classes throw `RuntimeException`; unsupported or non-public
-HTTP methods throw `BadMethodCallException`. Invalid patterns, route mappings,
-or missing request information throw `InvalidArgumentException`. The router
-does not automatically set HTTP status codes, implement HEAD/OPTIONS fallback,
-or catch handler exceptions; your entry point controls error responses.
+## Error handling
+
+An unmatched path throws `RouteNotFoundException`. A missing or unusable handler
+class throws `HandlerConfigurationException`: handlers must be instantiable with
+no constructor arguments. Both exceptions extend `RuntimeException`.
+
+For a matching path, unsupported or non-public HTTP methods throw
+`MethodNotAllowedException`, which extends `BadMethodCallException`.
+Its `getAllowedMethods()` accessor returns registered verbs implemented as public
+methods on the selected handler, including inherited methods. HEAD and OPTIONS
+are included only when explicitly implemented. Method support is checked before
+constructing the handler, and rejection never falls through to later routes.
+An unmatched path throws `RouteNotFoundException` even for an unsupported verb.
+
+Invalid patterns, route mappings, or missing request information throw
+`InvalidArgumentException`. Exceptions thrown by constructors and handler methods
+propagate unchanged. The router does not set HTTP status codes or implement
+HEAD/OPTIONS fallback; your entry point controls error responses:
+
+```php
+try {
+    solder::dispatch($routes);
+} catch (RouteNotFoundException $error) {
+    http_response_code(404);
+    echo 'Not found';
+} catch (MethodNotAllowedException $error) {
+    http_response_code(405);
+    $allowed = $error->getAllowedMethods();
+    header('Allow:' . ($allowed === [] ? '' : ' ' . implode(', ', $allowed)));
+    echo 'Method not allowed';
+} catch (HandlerConfigurationException $error) {
+    error_log((string) $error);
+    http_response_code(500);
+    echo 'Internal server error';
+}
+```
 
 ## Development
 

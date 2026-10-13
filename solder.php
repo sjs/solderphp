@@ -2,6 +2,25 @@
 
 declare(strict_types=1);
 
+class RouteNotFoundException extends RuntimeException {}
+
+class HandlerConfigurationException extends RuntimeException {}
+
+class MethodNotAllowedException extends BadMethodCallException
+{
+    /** @param list<string> $allowedMethods */
+    public function __construct(string $method, private readonly array $allowedMethods)
+    {
+        parent::__construct("Method, $method, not supported.");
+    }
+
+    /** @return list<string> */
+    public function getAllowedMethods(): array
+    {
+        return $this->allowedMethods;
+    }
+}
+
 /**
  * A small URL-to-class router derived from GluePHP by Joe Topjian.
  * See LICENSE for the original copyright and terms.
@@ -38,8 +57,9 @@ class solder
      *
      * @param array<string, class-string> $urls
      * @throws InvalidArgumentException For invalid requests or route patterns.
-     * @throws RuntimeException When no route or handler class exists.
-     * @throws BadMethodCallException For unsupported verbs or missing public handlers.
+     * @throws RouteNotFoundException When no route matches.
+     * @throws HandlerConfigurationException For missing or unusable handler classes.
+     * @throws MethodNotAllowedException For unsupported verbs or missing public handlers.
      */
     public static function dispatch(array $urls, ?string $method = null, ?string $uri = null): void
     {
@@ -50,9 +70,6 @@ class solder
         }
 
         $method = strtoupper($method);
-        if (!in_array($method, self::$allowedMethods, true)) {
-            throw new BadMethodCallException("Method, $method, not supported.");
-        }
 
         // Preserve encoded characters and leading double slashes in the path.
         $path = explode('?', $uri, 2)[0];
@@ -87,17 +104,29 @@ class solder
             }
 
             if (!class_exists($class)) {
-                throw new RuntimeException("Class, $class, not found.");
+                throw new HandlerConfigurationException("Class, $class, not found.");
             }
-            $handler = new $class();
-            if (!method_exists($handler, $method) || !(new ReflectionMethod($handler, $method))->isPublic()) {
-                throw new BadMethodCallException("Method, $method, not supported.");
+            $reflection = new ReflectionClass($class);
+            $constructor = $reflection->getConstructor();
+            if (!$reflection->isInstantiable() || ($constructor !== null && $constructor->getNumberOfRequiredParameters() > 0)) {
+                throw new HandlerConfigurationException("Class, $class, must be instantiable without constructor arguments.");
             }
 
+            $allowedMethods = [];
+            foreach (self::$allowedMethods as $verb) {
+                if ($reflection->hasMethod($verb) && $reflection->getMethod($verb)->isPublic()) {
+                    $allowedMethods[] = $verb;
+                }
+            }
+            if (!in_array($method, $allowedMethods, true)) {
+                throw new MethodNotAllowedException($method, $allowedMethods);
+            }
+
+            $handler = new $class();
             $handler->$method($matches);
             return;
         }
 
-        throw new RuntimeException("URL, $path, not found.");
+        throw new RouteNotFoundException("URL, $path, not found.");
     }
 }
